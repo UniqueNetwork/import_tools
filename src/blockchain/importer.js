@@ -1,4 +1,4 @@
-// const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 require('@unique-nft/sdk/tokens');
 
@@ -42,6 +42,7 @@ class ImportState {
     }
 
     updateState(props, save = true) {
+        console.log('updateState', props);
         this.state = {...this.state, ...props};
         if (save) this.save();
     }
@@ -73,38 +74,75 @@ class UniqueImporter {
 
     async createTokens(exportedCollection, exportedTokensList) {
         const exportCollectionId = exportedCollection.id;
+        const importState = new ImportState(this, exportCollectionId);
+        const collectionId = importState.collectionId;
+        if (importState.state.created_tokens.length >= exportedCollection.tokensCount) {
+            console.log(`Nothing to create. All tokens are created: ${exportedCollection.tokensCount}`)
+            return;
+        }
+
         const tokenLimit = 100;
         let tokensToMint = [];
         for (const token of exportedTokensList) {
+            if (importState.state.created_tokens.includes(token.tokenId)) {
+                continue;
+            }
+
             tokensToMint.push({
-                encodedAttributes: token.encodedAttributes ?? {},
-                image: token.image ?? {
-                    ipfsCid: '<valid_ipfs_cid>',
+                owner: token.owner.Substrate,
+                image: {
+                    urlInfix: 'string',
+                    hash: 'string'
+                },
+                encodedAttributes: {},
+                name: {
+                    _: "Hello!",
+                    en: "Hello!",
+                    fr: "Bonjour!"
+                },
+                audio: {
+                    urlInfix: 'string',
+                    hash: "string"
+                },
+                description: {
+                    _: "Hello!",
+                    en: "Hello!",
+                    fr: "Bonjour!"
+                },
+                imagePreview: {
+                    urlInfix: 'string',
+                    hash: 'string'
+                },
+                spatialObject: {
+                    urlInfix: 'string',
+                    hash: 'string'
+                },
+                video: {
+                    urlInfix: 'string',
+                    hash: 'string'
                 },
             })
 
             if (tokensToMint.length >= tokenLimit) {
-                await createTokens(this.sdk.this.signer.address, exportCollectionId, tokensToMint);
+                const result = await createTokens(this.sdk, this.signer.address, collectionId, tokensToMint);
+                importState.state.created_tokens.push(...result.map(({tokenId}) => tokenId));
+                importState.save();
                 tokensToMint = [];
             }
         }
 
         if (tokensToMint.length) {
-            await createTokens(this.sdk.this.signer.address, exportCollectionId, tokensToMint);
+            const result = await createTokens(this.sdk, this.signer.address, exportCollectionId, tokensToMint);
+            importState.state.created_tokens.push(...result.map(({tokenId}) => tokenId));
+            importState.save();
         }
-
-        // let importState = new ImportState(this, exportCollectionId),
-        //     collectionId = importState.state.id,
-        const exportedTokens = {};
-        exportedTokensList.forEach(t => exportedTokens[t.tokenId] = t);
-
     }
 
     async createCollection(exportedCollection) {
         const exportCollectionId = exportedCollection.id;
         const importState = new ImportState(this, exportedCollection.id);
 
-        if (importState.state.is_burned) {
+        if (importState.state.is_created) {
             console.log(`Collection #${exportCollectionId} already imported, nothing to do`);
             return importState.state.id;
         }
@@ -132,14 +170,16 @@ class UniqueImporter {
 
         const limits = {};
         for (let option of Object.keys(exportedCollection.raw.limits)) {
-            if (exportedCollection.raw.limits[option] !== null) limits[option] = exportedCollection.raw.limits[option];
+            if (exportedCollection.raw.limits[option] !== null) {
+                limits[option] = exportedCollection.raw.limits[option];
+            }
         }
 
         collectionId = await createCollection(this.sdk, this.signer.address, collectionOptions);
         importState.updateState({
             is_created: true, id: collectionId,
-            has_properties: true, has_token_property_permissions: true,
-            has_sponsorship: true, has_limits: true
+            has_properties: false, has_token_property_permissions: false,
+            has_sponsorship: false, has_limits: false
         });
         console.log(`Exported collection #${exportCollectionId} now #${collectionId}`);
 
@@ -147,6 +187,7 @@ class UniqueImporter {
         if (!importState.state.has_sponsorship) {
             if (!collectionOptions.pendingSponsor) {
                 console.log(`No confirmed sponsorship, nothing to do, ${JSON.stringify(exportedCollection.raw.sponsorship)}`);
+                importState.updateState({has_sponsorship: true});
             } else {
                 const setSponsorArgs = {
                     address: this.signer.address,
@@ -155,11 +196,11 @@ class UniqueImporter {
                 };
 
                 const result = await this.sdk.collections.setCollectionSponsor.submitWaitResult(setSponsorArgs);
-                importState.updateState({has_sponsorship: result});
+                importState.updateState({has_sponsorship: !!result});
             }
         }
 
-        if (Object.keys(limits).length > 0) {
+        if (!importState.state.has_limits && Object.keys(limits).length > 0) {
             const limitsArgs = {
                 address: this.signer.address,
                 collectionId,
@@ -167,7 +208,37 @@ class UniqueImporter {
             };
 
             const result = await this.sdk.collections.setLimits.submitWaitResult(limitsArgs);
-            importState.updateState({has_limits: result});
+            importState.updateState({has_limits: !!result.parsed});
+        } else {
+            importState.updateState({has_limits: true});
+        }
+
+        // TODO exportedCollection.permissions????'
+        if (!importState.state.has_token_property_permissions && exportedCollection.permissions) {
+            const args = {
+                address: this.signer.address,
+                collectionId,
+                permissions: exportedCollection.permissions,
+            };
+
+            const result = await this.sdk.collections.setPermissions.submitWaitResult(args);
+            importState.updateState({has_token_property_permissions: !!result.parsed});
+        } else {
+            importState.updateState({has_token_property_permissions: true});
+        }
+
+        // TODO exportedCollection.properties?????
+        if (!importState.state.has_properties && exportedCollection.properties) {
+            const args = {
+                address: this.signer.address,
+                collectionId,
+                permissions: exportedCollection.properties,
+            };
+
+            const result = await this.sdk.collections.setProperties.submitWaitResult(args);
+            importState.updateState({has_properties: !!result.parsed});
+        } else {
+            importState.updateState({has_properties: true});
         }
 
         return collectionId;
@@ -181,7 +252,7 @@ class UniqueImporter {
             throw new Error(`CollectionId(${collectionId}) or address(${address}) required`)
         }
 
-        if(importState.changed_ownership) {
+        if (importState.changed_ownership) {
             console.log(`Ownership for exported collection #${exportedCollection.id} already changed, nothing to do`);
             return;
         }
@@ -208,7 +279,7 @@ class UniqueImporter {
 
         await this.createCollection(exportedCollection);
         await this.createTokens(exportedCollection, exportedTokensList);
-        await this.changeOwnership(exportedCollection);
+        // await this.changeOwnership(exportedCollection);
     }
 }
 

@@ -27,7 +27,7 @@ const main = async () => {
 
     const signer = await getSigner(SEED);
     if (!signer) {
-        console.log('Invalid --signer-seed option, exit');
+        console.log(`Invalid -seed option: ${SEED}`);
         return;
     }
     const sdk = await createSdk(CHAIN_WS_URL, signer.signer);
