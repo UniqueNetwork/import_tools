@@ -1,4 +1,4 @@
-const { Sdk } = require('@unique-nft/sdk');
+const { Sdk } = require('@unique-nft/substrate-client');
 
 async function createSdk(chainWsUrl, signer) {
     if (!signer) {

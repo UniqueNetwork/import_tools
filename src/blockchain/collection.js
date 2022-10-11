@@ -34,7 +34,7 @@ const createCollection = async (sdk, address, collectionData) => {
         schema: collectionSchema,
     };
 
-    const createResult = await sdk.collections.creation_new.submitWaitResult(createArgs);
+    const createResult = await sdk.collections.creation.submitWaitResult(createArgs);
     return createResult.parsed.collectionId;
 }
 

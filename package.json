@@ -10,9 +10,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@unique-nft/accounts": "^0.2.2",
-    "@unique-nft/sdk": "^0.4.33",
-    "@unique-nft/substrate-client": "^0.5.0",
+    "@unique-nft/accounts": "^0.3.1",
+    "@unique-nft/sdk": "^0.1.2",
+    "@unique-nft/substrate-client": "^0.5.10",
     "dotenv": "^16.0.2"
   }
 }
